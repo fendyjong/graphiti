@@ -22,7 +22,7 @@ from graphiti_core.driver.operations.episodic_edge_ops import EpisodicEdgeOperat
 from graphiti_core.driver.query_executor import QueryExecutor, Transaction
 from graphiti_core.edges import EpisodicEdge
 from graphiti_core.errors import EdgeNotFoundError
-from graphiti_core.helpers import parse_db_date
+from graphiti_core.helpers import parse_db_date, serialize_episodic_attributes
 from graphiti_core.models.edges.edge_db_queries import (
     EPISODIC_EDGE_RETURN,
     EPISODIC_EDGE_SAVE,
@@ -55,6 +55,7 @@ class NeptuneEpisodicEdgeOperations(EpisodicEdgeOperations):
             'uuid': edge.uuid,
             'group_id': edge.group_id,
             'created_at': edge.created_at,
+            'attributes': serialize_episodic_attributes(edge.attributes, GraphProvider.NEPTUNE),
         }
         if tx is not None:
             await tx.run(EPISODIC_EDGE_SAVE, **params)
@@ -72,6 +73,10 @@ class NeptuneEpisodicEdgeOperations(EpisodicEdgeOperations):
     ) -> None:
         query = get_episodic_edge_save_bulk_query(GraphProvider.NEPTUNE)
         edge_dicts = [e.model_dump() for e in edges]
+        for edge_dict in edge_dicts:
+            edge_dict['attributes'] = serialize_episodic_attributes(
+                edge_dict.get('attributes'), GraphProvider.NEPTUNE
+            )
         if tx is not None:
             await tx.run(query, episodic_edges=edge_dicts)
         else:

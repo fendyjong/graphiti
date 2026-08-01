@@ -62,7 +62,8 @@ SCHEMA_QUERIES = """
         source_description STRING,
         content STRING,
         valid_at TIMESTAMP,
-        entity_edges STRING[]
+        entity_edges STRING[],
+        attributes STRING
     );
     CREATE NODE TABLE IF NOT EXISTS Entity (
         uuid STRING PRIMARY KEY,
@@ -104,7 +105,8 @@ SCHEMA_QUERIES = """
         FROM Episodic TO Entity,
         uuid STRING PRIMARY KEY,
         group_id STRING,
-        created_at TIMESTAMP
+        created_at TIMESTAMP,
+        attributes STRING
     );
     CREATE REL TABLE IF NOT EXISTS HAS_MEMBER(
         FROM Community TO Entity,
@@ -131,6 +133,18 @@ SCHEMA_QUERIES = """
         group_id STRING,
         created_at TIMESTAMP
     );
+"""
+
+# Kuzu is the only provider with an explicit schema, and `CREATE ... IF NOT
+# EXISTS` is a plain no-op against a database that already has the table -- it
+# does NOT add columns declared since that database was created. So any column
+# added to SCHEMA_QUERIES after its first release needs a matching idempotent
+# ALTER here, or an existing database silently keeps the old shape and fails at
+# write time with "Binder exception: Cannot find property". Runs immediately
+# after SCHEMA_QUERIES, so every table referenced below is guaranteed to exist.
+SCHEMA_MIGRATION_QUERIES = """
+    ALTER TABLE Episodic ADD IF NOT EXISTS attributes STRING;
+    ALTER TABLE MENTIONS ADD IF NOT EXISTS attributes STRING;
 """
 
 
@@ -258,6 +272,7 @@ class KuzuDriver(GraphDriver):
     def setup_schema(self):
         conn = kuzu.Connection(self.db)
         conn.execute(SCHEMA_QUERIES)
+        conn.execute(SCHEMA_MIGRATION_QUERIES)
         conn.close()
 
 

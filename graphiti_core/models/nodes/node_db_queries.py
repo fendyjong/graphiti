@@ -27,12 +27,19 @@ def _validate_entity_labels(labels: str | list[str]) -> list[str]:
     return filtered_labels
 
 
+# Episode saves merge (`SET n += ...`) rather than replace (`SET n = ...`).
+# Replacing deletes every property missing from the literal, which silently
+# dropped anything the caller had put on the episode -- including `attributes`
+# written by an earlier save, since reads do not repopulate them. Attributes are
+# applied *before* the declared fields so a declared field always wins, matching
+# the `if k not in entity_data` guard used on the entity paths.
 def get_episode_node_save_query(provider: GraphProvider) -> str:
     match provider:
         case GraphProvider.NEPTUNE:
             return """
                 MERGE (n:Episodic {uuid: $uuid})
-                SET n = {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
+                SET n += $attributes
+                SET n += {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
                 entity_edges: join([x IN coalesce($entity_edges, []) | toString(x) ], '|'), created_at: $created_at, valid_at: $valid_at}
                 RETURN n.uuid AS uuid
             """
@@ -47,20 +54,23 @@ def get_episode_node_save_query(provider: GraphProvider) -> str:
                     n.source_description = $source_description,
                     n.content = $content,
                     n.valid_at = $valid_at,
-                    n.entity_edges = $entity_edges
+                    n.entity_edges = $entity_edges,
+                    n.attributes = $attributes
                 RETURN n.uuid AS uuid
             """
         case GraphProvider.FALKORDB:
             return """
                 MERGE (n:Episodic {uuid: $uuid})
-                SET n = {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
+                SET n += $attributes
+                SET n += {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
                 entity_edges: $entity_edges, created_at: $created_at, valid_at: $valid_at}
                 RETURN n.uuid AS uuid
             """
         case _:  # Neo4j
             return """
                 MERGE (n:Episodic {uuid: $uuid})
-                SET n = {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
+                SET n += $attributes
+                SET n += {uuid: $uuid, name: $name, group_id: $group_id, source_description: $source_description, source: $source, content: $content,
                 entity_edges: $entity_edges, created_at: $created_at, valid_at: $valid_at}
                 RETURN n.uuid AS uuid
             """
@@ -72,7 +82,8 @@ def get_episode_node_save_bulk_query(provider: GraphProvider) -> str:
             return """
                 UNWIND $episodes AS episode
                 MERGE (n:Episodic {uuid: episode.uuid})
-                SET n = {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description,
+                SET n += episode.attributes
+                SET n += {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description,
                     source: episode.source, content: episode.content,
                 entity_edges: join([x IN coalesce(episode.entity_edges, []) | toString(x) ], '|'), created_at: episode.created_at, valid_at: episode.valid_at}
                 RETURN n.uuid AS uuid
@@ -88,14 +99,16 @@ def get_episode_node_save_bulk_query(provider: GraphProvider) -> str:
                     n.source_description = $source_description,
                     n.content = $content,
                     n.valid_at = $valid_at,
-                    n.entity_edges = $entity_edges
+                    n.entity_edges = $entity_edges,
+                    n.attributes = $attributes
                 RETURN n.uuid AS uuid
             """
         case GraphProvider.FALKORDB:
             return """
                 UNWIND $episodes AS episode
                 MERGE (n:Episodic {uuid: episode.uuid})
-                SET n = {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description, source: episode.source, content: episode.content, 
+                SET n += episode.attributes
+                SET n += {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description, source: episode.source, content: episode.content,
                 entity_edges: episode.entity_edges, created_at: episode.created_at, valid_at: episode.valid_at}
                 RETURN n.uuid AS uuid
             """
@@ -103,7 +116,8 @@ def get_episode_node_save_bulk_query(provider: GraphProvider) -> str:
             return """
                 UNWIND $episodes AS episode
                 MERGE (n:Episodic {uuid: episode.uuid})
-                SET n = {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description, source: episode.source, content: episode.content, 
+                SET n += episode.attributes
+                SET n += {uuid: episode.uuid, name: episode.name, group_id: episode.group_id, source_description: episode.source_description, source: episode.source, content: episode.content,
                 entity_edges: episode.entity_edges, created_at: episode.created_at, valid_at: episode.valid_at}
                 RETURN n.uuid AS uuid
             """

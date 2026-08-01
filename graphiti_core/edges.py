@@ -28,11 +28,10 @@ from typing_extensions import LiteralString
 from graphiti_core.driver.driver import GraphDriver, GraphProvider
 from graphiti_core.embedder import EmbedderClient
 from graphiti_core.errors import EdgeNotFoundError, GroupsEdgesNotFoundError
-from graphiti_core.helpers import parse_db_date
+from graphiti_core.helpers import parse_db_date, serialize_episodic_attributes
 from graphiti_core.models.edges.edge_db_queries import (
     COMMUNITY_EDGE_RETURN,
     EPISODIC_EDGE_RETURN,
-    EPISODIC_EDGE_SAVE,
     HAS_EPISODE_EDGE_RETURN,
     HAS_EPISODE_EDGE_SAVE,
     NEXT_EPISODE_EDGE_RETURN,
@@ -40,6 +39,7 @@ from graphiti_core.models.edges.edge_db_queries import (
     get_community_edge_save_query,
     get_entity_edge_return_query,
     get_entity_edge_save_query,
+    get_episodic_edge_save_query,
 )
 from graphiti_core.nodes import Node
 
@@ -141,6 +141,11 @@ class Edge(BaseModel, ABC):
 
 
 class EpisodicEdge(Edge):
+    attributes: dict[str, Any] = Field(
+        default={},
+        description='Additional attributes of the edge, persisted as edge properties',
+    )
+
     async def save(self, driver: GraphDriver):
         if driver.graph_operations_interface:
             try:
@@ -149,12 +154,13 @@ class EpisodicEdge(Edge):
                 pass
 
         result = await driver.execute_query(
-            EPISODIC_EDGE_SAVE,
+            get_episodic_edge_save_query(driver.provider),
             episode_uuid=self.source_node_uuid,
             entity_uuid=self.target_node_uuid,
             uuid=self.uuid,
             group_id=self.group_id,
             created_at=self.created_at,
+            attributes=serialize_episodic_attributes(self.attributes, driver.provider),
         )
 
         logger.debug(f'Saved edge to Graph: {self.uuid}')

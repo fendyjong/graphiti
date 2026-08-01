@@ -32,7 +32,11 @@ from graphiti_core.driver.driver import (
 )
 from graphiti_core.embedder import EmbedderClient
 from graphiti_core.errors import NodeNotFoundError
-from graphiti_core.helpers import parse_db_date, validate_node_labels
+from graphiti_core.helpers import (
+    parse_db_date,
+    serialize_episodic_attributes,
+    validate_node_labels,
+)
 from graphiti_core.models.nodes.node_db_queries import (
     COMMUNITY_NODE_RETURN,
     COMMUNITY_NODE_RETURN_NEPTUNE,
@@ -330,6 +334,10 @@ class EpisodicNode(Node):
         description='customer-defined metadata key-value pairs for filtering',
         default=None,
     )
+    attributes: dict[str, Any] = Field(
+        default={},
+        description='Additional attributes of the episode, persisted as node properties',
+    )
 
     async def save(self, driver: GraphDriver):
         if driver.graph_operations_interface:
@@ -348,6 +356,7 @@ class EpisodicNode(Node):
             'created_at': self.created_at,
             'valid_at': self.valid_at,
             'source': self.source.value,
+            'attributes': serialize_episodic_attributes(self.attributes, driver.provider),
         }
 
         result = await driver.execute_query(

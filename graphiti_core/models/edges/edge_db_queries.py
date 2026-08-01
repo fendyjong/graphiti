@@ -16,15 +16,44 @@ limitations under the License.
 
 from graphiti_core.driver.driver import GraphProvider
 
+# Attributes are applied before the declared fields so a declared field always
+# wins, matching the `if k not in edge_data` guard used on the entity paths.
+# `uuid` is rewritten explicitly for that reason: MERGE has already created the
+# edge by the time the splat runs, so without it an `attributes` entry named
+# `uuid` would overwrite the stored one -- leaving the edge unfindable by its
+# logical uuid, duplicated on the next save, and missed by `delete_by_uuids`.
 EPISODIC_EDGE_SAVE = """
+    MATCH (episode:Episodic {uuid: $episode_uuid})
+    MATCH (node:Entity {uuid: $entity_uuid})
+    MERGE (episode)-[e:MENTIONS {uuid: $uuid}]->(node)
+    SET e += $attributes
+    SET
+        e.uuid = $uuid,
+        e.group_id = $group_id,
+        e.created_at = $created_at
+    RETURN e.uuid AS uuid
+"""
+
+# Kuzu has an explicit schema, so attributes live in a single JSON `STRING`
+# column instead of being splatted into properties -- the same split the entity
+# save queries already make.
+EPISODIC_EDGE_SAVE_KUZU = """
     MATCH (episode:Episodic {uuid: $episode_uuid})
     MATCH (node:Entity {uuid: $entity_uuid})
     MERGE (episode)-[e:MENTIONS {uuid: $uuid}]->(node)
     SET
         e.group_id = $group_id,
-        e.created_at = $created_at
+        e.created_at = $created_at,
+        e.attributes = $attributes
     RETURN e.uuid AS uuid
 """
+
+
+def get_episodic_edge_save_query(provider: GraphProvider) -> str:
+    if provider == GraphProvider.KUZU:
+        return EPISODIC_EDGE_SAVE_KUZU
+
+    return EPISODIC_EDGE_SAVE
 
 
 def get_episodic_edge_save_bulk_query(provider: GraphProvider) -> str:
@@ -35,7 +64,8 @@ def get_episodic_edge_save_bulk_query(provider: GraphProvider) -> str:
             MERGE (episode)-[e:MENTIONS {uuid: $uuid}]->(node)
             SET
                 e.group_id = $group_id,
-                e.created_at = $created_at
+                e.created_at = $created_at,
+                e.attributes = $attributes
             RETURN e.uuid AS uuid
         """
 
@@ -44,7 +74,9 @@ def get_episodic_edge_save_bulk_query(provider: GraphProvider) -> str:
         MATCH (episode:Episodic {uuid: edge.source_node_uuid})
         MATCH (node:Entity {uuid: edge.target_node_uuid})
         MERGE (episode)-[e:MENTIONS {uuid: edge.uuid}]->(node)
+        SET e += edge.attributes
         SET
+            e.uuid = edge.uuid,
             e.group_id = edge.group_id,
             e.created_at = edge.created_at
         RETURN e.uuid AS uuid

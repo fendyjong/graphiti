@@ -677,6 +677,25 @@ class Graphiti:
 
         return resolved_edges, invalidated_edges, new_edges
 
+    def _build_episodic_edges(
+        self,
+        nodes: list[EntityNode],
+        episodes: list[EpisodicNode],
+        now: datetime,
+        node_episode_index_map: dict[str, list[int]] | None = None,
+    ) -> list[EpisodicEdge]:
+        """Build the MENTIONS edges for an episode. Overridable seam.
+
+        Behaviour-identical to calling `build_episodic_edges` directly. It is a
+        method so a subclass can populate `EpisodicEdge.attributes` before the
+        edges are written: they are both created and saved inside
+        `_process_episode_data`, so there is otherwise no point at which a
+        subclass can reach them before they hit the graph.
+        """
+        return build_episodic_edges(
+            nodes, [ep.uuid for ep in episodes], now, node_episode_index_map
+        )
+
     async def _process_episode_data(
         self,
         episode: EpisodicNode | list[EpisodicNode],
@@ -715,9 +734,8 @@ class Graphiti:
             building episodic edges with correct attribution.
         """
         episodes = episode if isinstance(episode, list) else [episode]
-        episode_uuids = [ep.uuid for ep in episodes]
 
-        episodic_edges = build_episodic_edges(nodes, episode_uuids, now, node_episode_index_map)
+        episodic_edges = self._build_episodic_edges(nodes, episodes, now, node_episode_index_map)
         for ep in episodes:
             ep.entity_edges = [edge.uuid for edge in entity_edges]
             if not self.store_raw_episode_content:

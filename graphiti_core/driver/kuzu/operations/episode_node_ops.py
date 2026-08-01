@@ -23,6 +23,7 @@ from graphiti_core.driver.operations.episode_node_ops import EpisodeNodeOperatio
 from graphiti_core.driver.query_executor import QueryExecutor, Transaction
 from graphiti_core.driver.record_parsers import episodic_node_from_record
 from graphiti_core.errors import NodeNotFoundError
+from graphiti_core.helpers import serialize_episodic_attributes
 from graphiti_core.models.nodes.node_db_queries import (
     EPISODIC_NODE_RETURN,
     get_episode_node_save_query,
@@ -50,6 +51,7 @@ class KuzuEpisodeNodeOperations(EpisodeNodeOperations):
             'created_at': node.created_at,
             'valid_at': node.valid_at,
             'source': node.source.value,
+            'attributes': serialize_episodic_attributes(node.attributes, GraphProvider.KUZU),
         }
         if tx is not None:
             await tx.run(query, **params)

@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import asyncio
+import json
 import os
 import re
 from collections.abc import Coroutine
@@ -29,6 +30,7 @@ from pydantic import BaseModel
 
 from graphiti_core.driver.driver import GraphProvider
 from graphiti_core.errors import GroupIdValidationError, NodeLabelValidationError
+from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 load_dotenv()
 
@@ -218,3 +220,19 @@ def validate_excluded_entity_types(
         )
 
     return True
+
+
+def serialize_episodic_attributes(
+    attributes: dict[str, Any] | None, provider: GraphProvider
+) -> str | dict[str, Any]:
+    """Shape `EpisodicNode.attributes` / `EpisodicEdge.attributes` for a save query.
+
+    Mirrors how entity attributes are already handled: Kuzu has an explicit
+    schema and stores them in a single JSON `STRING` column, every other
+    provider stores them as ordinary graph properties (the save queries splat
+    the map with `SET ... += `).
+    """
+    resolved = convert_datetimes_to_strings(attributes) if attributes else {}
+    if provider == GraphProvider.KUZU:
+        return json.dumps(resolved)
+    return resolved

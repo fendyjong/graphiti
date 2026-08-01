@@ -31,7 +31,7 @@ from graphiti_core.driver.driver import (
 from graphiti_core.edges import Edge, EntityEdge, EpisodicEdge, create_entity_edge_embeddings
 from graphiti_core.embedder import EmbedderClient
 from graphiti_core.graphiti_types import GraphitiClients
-from graphiti_core.helpers import normalize_l2, semaphore_gather
+from graphiti_core.helpers import normalize_l2, semaphore_gather, serialize_episodic_attributes
 from graphiti_core.models.edges.edge_db_queries import (
     get_entity_edge_save_bulk_query,
     get_episodic_edge_save_bulk_query,
@@ -161,6 +161,15 @@ async def add_nodes_and_edges_bulk_tx(
     for episode in episodes:
         episode['source'] = str(episode['source'].value)
         episode.pop('labels', None)
+        episode['attributes'] = serialize_episodic_attributes(
+            episode.get('attributes'), driver.provider
+        )
+
+    episodic_edge_dicts = [edge.model_dump() for edge in episodic_edges]
+    for episodic_edge in episodic_edge_dicts:
+        episodic_edge['attributes'] = serialize_episodic_attributes(
+            episodic_edge.get('attributes'), driver.provider
+        )
 
     nodes = []
 
@@ -226,7 +235,7 @@ async def add_nodes_and_edges_bulk_tx(
         await driver.graph_operations_interface.episodic_node_save_bulk(None, driver, tx, episodes)
         await driver.graph_operations_interface.node_save_bulk(None, driver, tx, nodes)
         await driver.graph_operations_interface.episodic_edge_save_bulk(
-            None, driver, tx, [edge.model_dump() for edge in episodic_edges]
+            None, driver, tx, episodic_edge_dicts
         )
         await driver.graph_operations_interface.edge_save_bulk(None, driver, tx, edges)
 
@@ -242,8 +251,8 @@ async def add_nodes_and_edges_bulk_tx(
         for edge in edges:
             await tx.run(entity_edge_query, **edge)
         episodic_edge_query = get_episodic_edge_save_bulk_query(driver.provider)
-        for edge in episodic_edges:
-            await tx.run(episodic_edge_query, **edge.model_dump())
+        for episodic_edge in episodic_edge_dicts:
+            await tx.run(episodic_edge_query, **episodic_edge)
     else:
         await tx.run(get_episode_node_save_bulk_query(driver.provider), episodes=episodes)
         await tx.run(
@@ -252,7 +261,7 @@ async def add_nodes_and_edges_bulk_tx(
         )
         await tx.run(
             get_episodic_edge_save_bulk_query(driver.provider),
-            episodic_edges=[edge.model_dump() for edge in episodic_edges],
+            episodic_edges=episodic_edge_dicts,
         )
         await tx.run(
             get_entity_edge_save_bulk_query(driver.provider),
